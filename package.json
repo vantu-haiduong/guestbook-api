@@ -1,15 +1,9 @@
 {
   "name": "guestbook-api",
   "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "main": "api/guestbook.js",
+  "license": "MIT",
   "dependencies": {
-    "mongodb": "^6.19.0"
+    "mongodb": "^6.8.0"
   }
 }
