@@ -1,31 +1,47 @@
 import { MongoClient } from "mongodb";
 
-let client;
-let clientPromise;
+const client = new MongoClient(process.env.MONGODB_URI);
+let db;
 
-if (!clientPromise) {
-  client = new MongoClient(process.env.MONGODB_URI);
-  clientPromise = client.connect();
+// Kết nối MongoDB (giữ connection khi hot reload trên Vercel)
+async function connectDB() {
+  if (!db) {
+    await client.connect();
+    db = client.db("guestbook"); // Tên DB
+  }
+  return db;
 }
 
 export default async function handler(req, res) {
+  // ✅ CORS: chỉ cho phép domain frontend của bạn
+  res.setHeader("Access-Control-Allow-Origin", "https://vantu-haiduong.github.io");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   try {
-    const client = await clientPromise;
-    const db = client.db("guestbook");
-    const collection = db.collection("messages");
+    const db = await connectDB();
+    const wishes = db.collection("wishes");
+
+    if (req.method === "GET") {
+      const allWishes = await wishes.find().sort({ _id: -1 }).toArray();
+      return res.status(200).json(allWishes);
+    }
 
     if (req.method === "POST") {
-      const { name, email, message, captcha } = req.body || {};
+      const { name, email, content, captcha } = req.body;
 
-      // Validate dữ liệu
-      if (!name || !message) {
+      if (!name || !content) {
         return res.status(400).json({ error: "Tên và lời chúc không được để trống" });
       }
-      if (message.length < 10) {
-        return res.status(400).json({ error: "Lời chúc phải ít nhất 10 ký tự" });
+      if (content.length < 10) {
+        return res.status(400).json({ error: "Lời chúc phải nhiều hơn 10 ký tự" });
       }
 
-      // Kiểm tra captcha
+      // ✅ Xác minh captcha
       const verify = await fetch("https://www.google.com/recaptcha/api/siteverify", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -36,31 +52,15 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Captcha verification failed" });
       }
 
-      // Lưu vào MongoDB
-      const doc = {
-        name: name.trim(),
-        email: email || null,
-        message: message.trim(),
-        createdAt: new Date(),
-      };
-      await collection.insertOne(doc);
+      const newWish = { name, email, content, createdAt: new Date() };
+      await wishes.insertOne(newWish);
 
-      return res.status(201).json({ success: true, doc });
+      return res.status(201).json({ message: "Gửi lời chúc thành công!", wish: newWish });
     }
 
-    if (req.method === "GET") {
-      const messages = await collection
-        .find({})
-        .sort({ createdAt: -1 })
-        .limit(50)
-        .toArray();
-      return res.status(200).json(messages);
-    }
-
-    res.setHeader("Allow", ["GET", "POST"]);
-    res.status(405).end(`Method ${req.method} Not Allowed`);
+    return res.status(405).json({ error: "Method not allowed" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal Server Error", details: err.message });
+    console.error("Lỗi server:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 }
